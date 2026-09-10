@@ -134,7 +134,7 @@
     <button class="ddown" data-d="down">▼</button>
   </div>
 
-  <div class="stem">Built with <a href="https://netclaw.dev" target="_blank" rel="noopener">NetClaw</a> &middot; Touch + sound + glow</div>
+  <div class="stem">Built with <a href="https://netclaw.dev" target="_blank" rel="noopener">Netclaw</a> &middot; Touch + sound + glow</div>
 </div>
 
 <script>
@@ -151,7 +151,7 @@
   var GRID = 20;
   var CELL = canvas.width / GRID;
 
-  var snake, dir, nextDir, food, score, running, paused, speed, req;
+  var snake, dir, nextDir, food, score, running, paused, speed, req, queue;
   var particles = [];
   var muted = false;
   var best = parseInt(localStorage.getItem('snakey_best') || '0', 10);
@@ -190,7 +190,7 @@
   function reset() {
     var mid = Math.floor(GRID/2);
     snake = [{x:mid,y:mid},{x:mid-1,y:mid},{x:mid-2,y:mid}];
-    dir = {x:1,y:0}; nextDir = dir;
+    dir = {x:1,y:0}; nextDir = dir; queue = [];
     score = 0; speed = 120; particles = [];
     scoreEl.textContent = 0;
     spawnFood();
@@ -213,7 +213,19 @@
   // ---------- Main loop ----------
   function tick() {
     if (!running || paused) return;
-    if (!(nextDir.x===-dir.x && nextDir.y===-dir.y)) dir = nextDir;
+
+    // Consume buffered turns one-per-tick, in order. A queued turn that would
+    // be a 180° reversal *relative to the current direction* is skipped, so
+    // rapid-tapping near a wall never locks you in; but every real turn is
+    // honored in sequence instead of being dropped by a single-slot overwrite.
+    var applied = false;
+    while (queue.length && !applied) {
+      var q = queue.shift();
+      if (q.x === -dir.x && q.y === -dir.y) continue; // reversal: ignore
+      dir = q; applied = true;
+    }
+    // shift() above already removes consumed turns; leftover queued turns stay
+    // buffered and are honored on subsequent ticks.
 
     var head = {x:snake[0].x+dir.x, y:snake[0].y+dir.y};
     if (head.x<0||head.x>=GRID||head.y<0||head.y>=GRID) return gameOver('You hit the wall!');
@@ -333,13 +345,15 @@
   };
   function steer(name){
     var d = inputMap[name]; if(!d) return;
-    if (!(d.x===-nextDir.x && d.y===-nextDir.y)) { nextDir = d; sfxMove(); }
+    // Buffer the turn so rapid inputs are honored in order (no dropped turns).
+    if (queue.length < 4) { queue.push(d); sfxMove(); }
   }
 
   document.addEventListener('keydown', function(e){
     if (inputMap[e.key]) { e.preventDefault(); if(running&&!paused) steer(e.key); }
     else if (e.key==='p'||e.key==='P') togglePause();
     else if (e.key==='m'||e.key==='M') toggleMute();
+    else if (e.key==='Enter' || e.key===' ') { e.preventDefault(); if(!running) start(); else if(paused) togglePause(); }
   });
 
   // Swipe on the game area
