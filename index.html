@@ -356,26 +356,44 @@
     else if (e.key==='Enter' || e.key===' ') { e.preventDefault(); if(!running) start(); else if(paused) togglePause(); }
   });
 
-  // Swipe on the game area
-  var touchStart = null;
+  // Swipe / drag on the game area (Pointer Events unify mouse, touch, pen)
+  var pointerStart = null;
   var gameEl = document.getElementById('game');
   function directionFromSwipe(dx,dy){
-    if (Math.abs(dx)<18 && Math.abs(dy)<18) return null;
+    if (Math.abs(dx)<20 && Math.abs(dy)<20) return null;
     if (Math.abs(dx)>Math.abs(dy)) return dx>0?'right':'left';
     else return dy>0?'down':'up';
   }
-  gameEl.addEventListener('touchstart', function(e){
+  // When a swipe/drag ends on the board, suppress the synthetic click so the
+  // Start/Resume button doesn't fire from the tail of a swipe gesture.
+  var suppressClick = false;
+  gameEl.addEventListener('pointerdown', function(e){
     if (e.target === startBtn) return;
-    var t = e.touches[0]; touchStart = {x:t.clientX,y:t.clientY}; e.preventDefault();
-  }, {passive:false});
-  gameEl.addEventListener('touchmove', function(e){ if(touchStart) e.preventDefault(); }, {passive:false});
-  gameEl.addEventListener('touchend', function(e){
-    if(!touchStart) return;
-    var t = e.changedTouches[0];
-    var dx = t.clientX-touchStart.x, dy = t.clientY-touchStart.y;
-    touchStart = null;
-    if (running && !paused) { var d = directionFromSwipe(dx,dy); if(d) steer(d); }
+    pointerStart = {x:e.clientX, y:e.clientY, pointerId:e.pointerId};
+    try { gameEl.setPointerCapture(e.pointerId); } catch(err){}
+    e.preventDefault();
   });
+  gameEl.addEventListener('pointermove', function(e){
+    if (pointerStart && e.pointerId === pointerStart.pointerId) e.preventDefault();
+  });
+  gameEl.addEventListener('pointerup', function(e){
+    if (!pointerStart || e.pointerId !== pointerStart.pointerId) return;
+    var dx = e.clientX-pointerStart.x, dy = e.clientY-pointerStart.y;
+    var isSwipe = !(Math.abs(dx)<20 && Math.abs(dy)<20);
+    pointerStart = null;
+    if (isSwipe) {
+      suppressClick = true;
+      if (running && !paused) { var d = directionFromSwipe(dx,dy); if(d) steer(d); }
+    }
+  });
+  gameEl.addEventListener('pointercancel', function(){ pointerStart = null; });
+  // Suppress the click that follows a swipe so it doesn't toggle start/pause.
+  gameEl.addEventListener('click', function(e){
+    if (suppressClick) { e.preventDefault(); e.stopPropagation(); suppressClick = false; }
+  });
+  // Keep the board safe from native gesture/scroll on touch devices.
+  gameEl.addEventListener('touchstart', function(e){ e.preventDefault(); }, {passive:false});
+  gameEl.addEventListener('touchmove', function(e){ if(pointerStart) e.preventDefault(); }, {passive:false});
 
   // D-pad buttons
   var pad = document.getElementById('pad');
