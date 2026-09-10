@@ -151,7 +151,7 @@
   var GRID = 20;
   var CELL = canvas.width / GRID;
 
-  var snake, dir, nextDir, food, score, running, paused, speed, req, queue;
+  var snake, dir, nextDir, food, score, running, paused, speed, req, queue, moving;
   var particles = [];
   var muted = false;
   var best = parseInt(localStorage.getItem('snakey_best') || '0', 10);
@@ -189,9 +189,13 @@
   // ---------- State ----------
   function reset() {
     var mid = Math.floor(GRID/2);
-    snake = [{x:mid,y:mid},{x:mid-1,y:mid},{x:mid-2,y:mid}];
+    // Spawn the snake heading right from the lower-left area, far from the
+    // right wall, so the player has real runway on start instead of dieing in
+    // ~1s to an un-steered default drift.
+    snake = [{x:4,y:mid},{x:3,y:mid},{x:2,y:mid}];
     dir = {x:1,y:0}; nextDir = dir; queue = [];
-    score = 0; speed = 120; particles = [];
+    score = 0; speed = 150; particles = []; // slower opening pace
+    moving = false; // waits for the player's first input before moving
     scoreEl.textContent = 0;
     spawnFood();
   }
@@ -212,7 +216,7 @@
 
   // ---------- Main loop ----------
   function tick() {
-    if (!running || paused) return;
+    if (!running || paused || !moving) return;
 
     // Consume buffered turns one-per-tick, in order. A queued turn that would
     // be a 180° reversal *relative to the current direction* is skipped, so
@@ -345,6 +349,14 @@
   };
   function steer(name){
     var d = inputMap[name]; if(!d) return;
+    // First input wakes the snake from idle so the game is clearly "on".
+    if (moving === false && running && !paused) {
+      moving = true;
+      if (!(d.x === -dir.x && d.y === -dir.y)) dir = d;
+      queue = [];
+      draw();
+      req = setTimeout(tick, speed);
+    }
     // Buffer the turn so rapid inputs are honored in order (no dropped turns).
     if (queue.length < 4) { queue.push(d); sfxMove(); }
   }
